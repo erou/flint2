@@ -21,18 +21,19 @@ int
 main(void)
 {
     int i, j, w, result;
+    slong tmul = 10;
     FLINT_TEST_INIT(state);
 
     flint_printf("divrem_ideal_monagan_pearce....");
     fflush(stdout);
 
     /* Check f*g/g = f */
-    for (i = 0; i < 10 * flint_test_multiplier(); i++)
+    for (i = 0; i < tmul * flint_test_multiplier(); i++)
     {
        fmpz_mpoly_ctx_t ctx;
        fmpz_mpoly_t f, g, h, k, r;
        ordering_t ord;
-       slong nvars, len, len1, len2, exp_bound, exp_bound1, exp_bound2;
+       slong nvars, len, len1, len2;
        slong coeff_bits, exp_bits, exp_bits1, exp_bits2;
        fmpz_mpoly_struct * qarr[1], * darr[1];
        ord = mpoly_ordering_randtest(state);
@@ -50,28 +51,21 @@ main(void)
        len1 = n_randint(state, 100);
        len2 = n_randint(state, 100) + 1;
 
-       exp_bits = n_randint(state, FLINT_BITS - 1 - 
-                  mpoly_ordering_isdeg(ord)*FLINT_BIT_COUNT(nvars)) + 1;
-       exp_bits1 = n_randint(state, FLINT_BITS - 2 - 
-                  mpoly_ordering_isdeg(ord)*FLINT_BIT_COUNT(nvars)) + 1;
-       exp_bits2 = n_randint(state, FLINT_BITS - 2 - 
-                  mpoly_ordering_isdeg(ord)*FLINT_BIT_COUNT(nvars)) + 1;
-
-       exp_bound = n_randbits(state, exp_bits);
-       exp_bound1 = n_randbits(state, exp_bits1);
-       exp_bound2 = n_randbits(state, exp_bits2);
+       exp_bits = n_randint(state, 200) + 1;
+       exp_bits1 = n_randint(state, 200) + 1;
+       exp_bits2 = n_randint(state, 200) + 1;
 
        coeff_bits = n_randint(state, 200);
 
        for (j = 0; j < 4; j++)
        {
-          fmpz_mpoly_randtest(f, state, len1, exp_bound1, coeff_bits, ctx);
+          fmpz_mpoly_randtest_bits(f, state, len1, coeff_bits, exp_bits1, ctx);
           do {
-             fmpz_mpoly_randtest(g, state, len2, exp_bound2, coeff_bits + 1, ctx);
+             fmpz_mpoly_randtest_bits(g, state, len2, coeff_bits + 1, exp_bits2, ctx);
           } while (g->length == 0);
-          fmpz_mpoly_randtest(h, state, len, exp_bound, coeff_bits, ctx);
-          fmpz_mpoly_randtest(k, state, len, exp_bound, coeff_bits, ctx);
-          fmpz_mpoly_randtest(r, state, len, exp_bound, coeff_bits, ctx);
+          fmpz_mpoly_randtest_bits(h, state, len, coeff_bits, exp_bits, ctx);
+          fmpz_mpoly_randtest_bits(k, state, len, coeff_bits, exp_bits, ctx);
+          fmpz_mpoly_randtest_bits(r, state, len, coeff_bits, exp_bits, ctx);
 
           fmpz_mpoly_mul_johnson(h, f, g, ctx);
 
@@ -85,20 +79,7 @@ main(void)
           if (!result)
           {
              printf("FAIL\n");
-
-             printf("ord = "); mpoly_ordering_print(ord);
-             printf(", len = %ld, exp_bits = %ld, exp_bound = %lx, "
-                    "len1 = %ld, exp_bits1 = %ld, exp_bound1 = %lx, "
-                    "len2 = %ld, exp_bits2 = %ld, exp_bound2 = %lx, "
-                                      "coeff_bits = %ld, nvars = %ld\n\n",
-                       len, exp_bits, exp_bound, len1, exp_bits1, exp_bound1,
-                               len2, exp_bits2, exp_bound2, coeff_bits, nvars);
-
-             fmpz_mpoly_print_pretty(f, NULL, ctx); printf("\n\n");
-             fmpz_mpoly_print_pretty(g, NULL, ctx); printf("\n\n");
-             fmpz_mpoly_print_pretty(h, NULL, ctx); printf("\n\n");
-             fmpz_mpoly_print_pretty(k, NULL, ctx); printf("\n\n");
-          
+             flint_printf("Check f*g/g = f\ni = %wd, j = %wd\n", i, j);
              flint_abort();
           }
        }
@@ -111,134 +92,132 @@ main(void)
     }
 
     /* Check f = g1*q1 + ... + gn*qn + r for random polys */
-    for (i = 0; i < 100 * flint_test_multiplier(); i++)
+    for (i = 0; i < tmul*tmul * flint_test_multiplier(); i++)
     {
-       fmpz_mpoly_ctx_t ctx;
-       fmpz_mpoly_t f, r, k1, k2;
-       fmpz_mpoly_struct * g, * q;
-       ordering_t ord;
-       slong nvars, len, len1, len2, exp_bound, exp_bound1, exp_bound2, num;
-       slong coeff_bits, exp_bits, exp_bits1, exp_bits2;
-       fmpz_mpoly_struct * qarr[5], * darr[5];
+        fmpz_mpoly_ctx_t ctx;
+        fmpz_mpoly_t f, r, k1, k2;
+        fmpz_mpoly_struct * g, * q;
+        ordering_t ord;
+        slong nvars, len, len1, len2, exp_bound, exp_bound1, exp_bound2, num;
+        slong coeff_bits;
+        fmpz_mpoly_struct * qarr[5], * darr[5];
+        fmpz * shifts, * strides;
 
-       num = n_randint(state, 5) + 1;
+        num = n_randint(state, 5) + 1;
 
-       g = (fmpz_mpoly_struct *) flint_malloc(num*sizeof(fmpz_mpoly_struct));
-       q = (fmpz_mpoly_struct *) flint_malloc(num*sizeof(fmpz_mpoly_struct));
+        g = (fmpz_mpoly_struct *) flint_malloc(num*sizeof(fmpz_mpoly_struct));
+        q = (fmpz_mpoly_struct *) flint_malloc(num*sizeof(fmpz_mpoly_struct));
 
-       ord = mpoly_ordering_randtest(state);
-	   
-       nvars = n_randint(state, 10) + 1;
+        ord = mpoly_ordering_randtest(state);
 
-       fmpz_mpoly_ctx_init(ctx, nvars, ord);
+        nvars = n_randint(state, 9) + 1;
 
-       for (w = 0; w < num; w++)
-       {
-          fmpz_mpoly_init(g + w, ctx);
-          darr[w] = g + w;
+        fmpz_mpoly_ctx_init(ctx, nvars, ord);
 
-          fmpz_mpoly_init(q + w, ctx);
-          qarr[w] = q + w;
-       }  
+        for (w = 0; w < num; w++)
+        {
+            fmpz_mpoly_init(g + w, ctx);
+            darr[w] = g + w;
 
-       fmpz_mpoly_init(f, ctx);
-       fmpz_mpoly_init(k1, ctx);
-       fmpz_mpoly_init(k2, ctx);
-       fmpz_mpoly_init(r, ctx);
+            fmpz_mpoly_init(q + w, ctx);
+            qarr[w] = q + w;
+        }  
 
-       len = n_randint(state, 10);
-       len1 = n_randint(state, 10);
-       len2 = n_randint(state, 10) + 1;
+        fmpz_mpoly_init(f, ctx);
+        fmpz_mpoly_init(k1, ctx);
+        fmpz_mpoly_init(k2, ctx);
+        fmpz_mpoly_init(r, ctx);
 
-       exp_bits = n_randint(state, 14/(nvars + 
-                            mpoly_ordering_isdeg(ord) + (nvars == 1)) + 1) + 1;
-       exp_bits1 = n_randint(state, 14/(nvars + 
-                            mpoly_ordering_isdeg(ord) + (nvars == 1)) + 1) + 1;
-       exp_bits2 = n_randint(state, 14/(nvars + 
-                            mpoly_ordering_isdeg(ord) + (nvars == 1)) + 1) + 1;
+        len = n_randint(state, 10);
+        len1 = n_randint(state, 10);
+        len2 = n_randint(state, 10) + 1;
 
-       exp_bound = n_randbits(state, exp_bits);
-       exp_bound1 = n_randbits(state, exp_bits1);
-       exp_bound2 = n_randbits(state, exp_bits2);
+        exp_bound =  n_randint(state, 2 + 175/nvars/nvars) + 1;
+        exp_bound1 = n_randint(state, 2 + 175/nvars/nvars) + 1;
+        exp_bound2 = n_randint(state, 2 + 175/nvars/nvars) + 1;
 
-       coeff_bits = n_randint(state, 70);
+        coeff_bits = n_randint(state, 70);
 
-       for (j = 0; j < 4; j++)
-       {
-          fmpz_mpoly_randtest(f, state, len1, exp_bound1, coeff_bits, ctx);
-          for (w = 0; w < num; w++)
-          {
-             do {
-                fmpz_mpoly_randtest(darr[w], state, len2, exp_bound2, coeff_bits + 1, ctx);
-             } while (darr[w]->length == 0);
-             fmpz_mpoly_randtest(qarr[w], state, len, exp_bound, coeff_bits, ctx);
-          }
-          fmpz_mpoly_randtest(k1, state, len, exp_bound, coeff_bits, ctx);
-          fmpz_mpoly_randtest(k2, state, len, exp_bound, coeff_bits, ctx);
+        shifts = (fmpz *) flint_malloc(ctx->minfo->nvars*sizeof(fmpz));
+        strides = (fmpz *) flint_malloc(ctx->minfo->nvars*sizeof(fmpz));
+        for (j = 0; j < ctx->minfo->nvars; j++)
+        {
+            fmpz_init(shifts + j);
+            fmpz_init(strides + j);
+            fmpz_randtest_unsigned(shifts + j, state, 100);
+            fmpz_randtest_unsigned(strides + j, state, 100);
+            fmpz_add_ui(strides + j, strides + j, 1);
+        }
 
-          fmpz_mpoly_divrem_ideal_monagan_pearce(qarr, r, f, darr, num, ctx);
+        for (j = 0; j < 4; j++)
+        {
+            fmpz_mpoly_randtest_bound(f, state, len1, coeff_bits, exp_bound1, ctx);
+            fmpz_mpoly_inflate(f, f, shifts, strides, ctx);
+            fmpz_mpoly_assert_canonical(f, ctx);
+            for (w = 0; w < num; w++)
+            {
+                do {
+                    fmpz_mpoly_randtest_bound(darr[w], state, len2, coeff_bits + 1, exp_bound2, ctx);
+                } while (darr[w]->length == 0);
+                fmpz_mpoly_inflate(darr[w], darr[w], shifts, strides, ctx);
+                fmpz_mpoly_assert_canonical(darr[w], ctx);
+                fmpz_mpoly_randtest_bound(qarr[w], state, len, coeff_bits, exp_bound, ctx);
+            }
+            fmpz_mpoly_randtest_bound(k1, state, len, coeff_bits, exp_bound, ctx);
+            fmpz_mpoly_randtest_bound(k2, state, len, coeff_bits, exp_bound, ctx);
 
-          fmpz_mpoly_zero(k2, ctx);
-          for (w = 0; w < num; w++)
-          {
-             fmpz_mpoly_mul_johnson(k1, qarr[w], darr[w], ctx);
-             fmpz_mpoly_add(k2, k2, k1, ctx);
-	  }
-          fmpz_mpoly_add(k2, k2, r, ctx);
+            fmpz_mpoly_divrem_ideal_monagan_pearce(qarr, r, f, darr, num, ctx);
 
-          result = fmpz_mpoly_equal(f, k2, ctx);
+            fmpz_mpoly_zero(k2, ctx);
+            for (w = 0; w < num; w++)
+            {
+                fmpz_mpoly_assert_canonical(qarr[w], ctx);
+                fmpz_mpoly_mul_johnson(k1, qarr[w], darr[w], ctx);
+                fmpz_mpoly_add(k2, k2, k1, ctx);
+            }
+            fmpz_mpoly_add(k2, k2, r, ctx);
 
-          if (!result)
-          {
-             printf("FAIL\n");
+            result = fmpz_mpoly_equal(f, k2, ctx);
 
-             printf("ord = "); mpoly_ordering_print(ord);
-             printf(", len = %ld, exp_bits = %ld, exp_bound = %lx, "
-                    "len1 = %ld, exp_bits1 = %ld, exp_bound1 = %lx, "
-                    "len2 = %ld, exp_bits2 = %ld, exp_bound2 = %lx, "
-                              "coeff_bits = %ld, nvars = %ld, num = %ld\n\n",
-                       len, exp_bits, exp_bound, len1, exp_bits1, exp_bound1,
-                          len2, exp_bits2, exp_bound2, coeff_bits, nvars, num);
+            if (!result)
+            {
+                printf("FAIL\n");
+                flint_printf("Check f = g1*q1 + ... + gn*qn + r for random polys"
+                                               "\ni = %wd, j = %wd\n", i, j);
+                flint_abort();
+            }
+        }
 
-             fmpz_mpoly_print_pretty(f, NULL, ctx); printf("\n\n");
-             fmpz_mpoly_print_pretty(k2, NULL, ctx); printf("\n\n");
-             fmpz_mpoly_print_pretty(r, NULL, ctx); printf("\n\n");
+        for (j = 0; j < ctx->minfo->nvars; j++)
+        {
+            fmpz_clear(shifts + j);
+            fmpz_clear(strides + j);
+        }
+        flint_free(shifts);
+        flint_free(strides);
 
-             for (w = 0; w < num; w++)
-             {
-                fmpz_mpoly_print_pretty(darr[w], NULL, ctx); printf("\n\n");
-             }
-             for (w = 0; w < num; w++)
-             {
-                fmpz_mpoly_print_pretty(qarr[w], NULL, ctx); printf("\n\n");
-             }
-			           
-             flint_abort();
-          }
-       }
+        for (w = 0; w < num; w++)
+            fmpz_mpoly_clear(qarr[w], ctx);
+        for (w = 0; w < num; w++)
+            fmpz_mpoly_clear(darr[w], ctx);
+        fmpz_mpoly_clear(f, ctx);  
+        fmpz_mpoly_clear(k1, ctx);  
+        fmpz_mpoly_clear(k2, ctx);  
+        fmpz_mpoly_clear(r, ctx);
 
-       for (w = 0; w < num; w++)
-          fmpz_mpoly_clear(qarr[w], ctx);
-       for (w = 0; w < num; w++)
-          fmpz_mpoly_clear(darr[w], ctx);
-       fmpz_mpoly_clear(f, ctx);  
-       fmpz_mpoly_clear(k1, ctx);  
-       fmpz_mpoly_clear(k2, ctx);  
-       fmpz_mpoly_clear(r, ctx);
-
-       flint_free(g);
-       flint_free(q);  
+        flint_free(g);
+        flint_free(q);  
     }
 
-    /* Check aiasing */
-    for (i = 0; i < 20 * flint_test_multiplier(); i++)
+    /* Check aliasing */
+    for (i = 0; i < 2*tmul * flint_test_multiplier(); i++)
     {
        fmpz_mpoly_ctx_t ctx;
        fmpz_mpoly_t f, r, k1, k2;
        fmpz_mpoly_struct * g, * q;
        ordering_t ord;
        slong nvars, len, len1, len2, exp_bound, exp_bound1, exp_bound2, num;
-       slong coeff_bits, exp_bits, exp_bits1, exp_bits2;
+       slong coeff_bits;
        fmpz_mpoly_struct * qarr[5], * darr[5];
 
        num = n_randint(state, 5) + 1;
@@ -270,31 +249,24 @@ main(void)
        len1 = n_randint(state, 10);
        len2 = n_randint(state, 10) + 1;
 
-       exp_bits = n_randint(state, 14/(nvars + 
-                            mpoly_ordering_isdeg(ord) + (nvars == 1)) + 1) + 1;
-       exp_bits1 = n_randint(state, 14/(nvars + 
-                            mpoly_ordering_isdeg(ord) + (nvars == 1)) + 1) + 1;
-       exp_bits2 = n_randint(state, 14/(nvars + 
-                            mpoly_ordering_isdeg(ord) + (nvars == 1)) + 1) + 1;
-
-       exp_bound = n_randbits(state, exp_bits);
-       exp_bound1 = n_randbits(state, exp_bits1);
-       exp_bound2 = n_randbits(state, exp_bits2);
+       exp_bound =  n_randint(state, 3 + 200/nvars/nvars) + 1;
+       exp_bound1 = n_randint(state, 3 + 200/nvars/nvars) + 1;
+       exp_bound2 = n_randint(state, 3 + 200/nvars/nvars) + 1;
 
        coeff_bits = n_randint(state, 70);
 
        for (j = 0; j < 4; j++)
        {
-          fmpz_mpoly_randtest(f, state, len1, exp_bound1, coeff_bits, ctx);
+          fmpz_mpoly_randtest_bound(f, state, len1, coeff_bits, exp_bound1, ctx);
           for (w = 0; w < num; w++)
           {
              do {
-                fmpz_mpoly_randtest(darr[w], state, len2, exp_bound2, coeff_bits + 1, ctx);
+                fmpz_mpoly_randtest_bound(darr[w], state, len2, coeff_bits + 1, exp_bound2, ctx);
              } while (darr[w]->length == 0);
-             fmpz_mpoly_randtest(qarr[w], state, len, exp_bound, coeff_bits, ctx);
+             fmpz_mpoly_randtest_bound(qarr[w], state, len, coeff_bits, exp_bound, ctx);
           }
-          fmpz_mpoly_randtest(k1, state, len, exp_bound, coeff_bits, ctx);
-          fmpz_mpoly_randtest(k2, state, len, exp_bound, coeff_bits, ctx);
+          fmpz_mpoly_randtest_bound(k1, state, len, coeff_bits, exp_bound, ctx);
+          fmpz_mpoly_randtest_bound(k2, state, len, coeff_bits, exp_bound, ctx);
 
           fmpz_mpoly_set(r, f, ctx);
 
@@ -305,7 +277,7 @@ main(void)
           {
              fmpz_mpoly_mul_johnson(k1, qarr[w], darr[w], ctx);
              fmpz_mpoly_add(k2, k2, k1, ctx);
-	  }
+	      }
           fmpz_mpoly_add(k2, k2, f, ctx);
 
           result = fmpz_mpoly_equal(r, k2, ctx);
@@ -313,28 +285,7 @@ main(void)
           if (!result)
           {
              printf("FAIL\n");
-
-             printf("ord = "); mpoly_ordering_print(ord);
-             printf(", len = %ld, exp_bits = %ld, exp_bound = %lx, "
-                    "len1 = %ld, exp_bits1 = %ld, exp_bound1 = %lx, "
-                    "len2 = %ld, exp_bits2 = %ld, exp_bound2 = %lx, "
-                              "coeff_bits = %ld, nvars = %ld, num = %ld\n\n",
-                       len, exp_bits, exp_bound, len1, exp_bits1, exp_bound1,
-                          len2, exp_bits2, exp_bound2, coeff_bits, nvars, num);
-
-             fmpz_mpoly_print_pretty(f, NULL, ctx); printf("\n\n");
-             fmpz_mpoly_print_pretty(k2, NULL, ctx); printf("\n\n");
-             fmpz_mpoly_print_pretty(r, NULL, ctx); printf("\n\n");
-
-             for (w = 0; w < num; w++)
-             {
-                fmpz_mpoly_print_pretty(darr[w], NULL, ctx); printf("\n\n");
-             }
-             for (w = 0; w < num; w++)
-             {
-                fmpz_mpoly_print_pretty(qarr[w], NULL, ctx); printf("\n\n");
-             }
-			           
+             flint_printf("Check aliasing\ni = %wd, j = %wd\n", i, j);
              flint_abort();
           }
        }

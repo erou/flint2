@@ -37,19 +37,33 @@
 #undef count_leading_zeros
 #undef count_trailing_zeros
 
+/* 1 if we know that the hardware is strongly-ordered */
+#define FLINT_KNOW_STRONG_ORDER 0
+
 /* x86 : 64 bit */
 #if (GMP_LIMB_BITS == 64 && defined (__amd64__)) 
 
+#undef FLINT_KNOW_STRONG_ORDER
+#define FLINT_KNOW_STRONG_ORDER 1
+
+#define add_ssssaaaaaaaa(s3, s2, s1, s0, a3, a2, a1, a0, b3, b2, b1, b0)  \
+  __asm__ ("addq %11,%q3\n\tadcq %9,%q2\n\tadcq %7,%q1\n\tadcq %5,%q0"    \
+       : "=r" (s3), "=&r" (s2), "=&r" (s1), "=&r" (s0)                    \
+       : "0"  ((mp_limb_t)(a3)), "rme" ((mp_limb_t)(b3)),                 \
+         "1"  ((mp_limb_t)(a2)), "rme" ((mp_limb_t)(b2)),                 \
+         "2"  ((mp_limb_t)(a1)), "rme" ((mp_limb_t)(b1)),                 \
+         "3"  ((mp_limb_t)(a0)), "rme" ((mp_limb_t)(b0)))                 \
+
 #define add_sssaaaaaa(sh, sm, sl, ah, am, al, bh, bm, bl)  \
   __asm__ ("addq %8,%q2\n\tadcq %6,%q1\n\tadcq %4,%q0"     \
-       : "=r" (sh), "=r" (sm), "=&r" (sl)                  \
+       : "=r" (sh), "=&r" (sm), "=&r" (sl)                  \
        : "0"  ((mp_limb_t)(ah)), "rme" ((mp_limb_t)(bh)),  \
          "1"  ((mp_limb_t)(am)), "rme" ((mp_limb_t)(bm)),  \
          "2"  ((mp_limb_t)(al)), "rme" ((mp_limb_t)(bl)))  \
 
 #define sub_dddmmmsss(dh, dm, dl, mh, mm, ml, sh, sm, sl)  \
   __asm__ ("subq %8,%q2\n\tsbbq %6,%q1\n\tsbbq %4,%q0"     \
-       : "=r" (dh), "=r" (dm), "=&r" (dl)                  \
+       : "=r" (dh), "=&r" (dm), "=&r" (dl)                  \
        : "0"  ((mp_limb_t)(mh)), "rme" ((mp_limb_t)(sh)),  \
          "1"  ((mp_limb_t)(mm)), "rme" ((mp_limb_t)(sm)),  \
          "2"  ((mp_limb_t)(ml)), "rme" ((mp_limb_t)(sl)))  \
@@ -71,13 +85,18 @@
        : "=a" (w0), "=d" (w1)                           \
        : "%0" ((mp_limb_t)(u)), "rm" ((mp_limb_t)(v)))
 
+#define smul_ppmm(w1, w0, u, v)                         \
+  __asm__ ("imulq %3"                                   \
+       : "=a" (w0), "=d" (w1)                           \
+       : "%0" ((mp_limb_t)(u)), "rm" ((mp_limb_t)(v)))
+
 #define udiv_qrnnd(q, r, n1, n0, dx)                                            \
-  __asm__ ("divq %4"                                                            \
+  __asm__ volatile ("divq %4"                                                            \
        : "=a" (q), "=d" (r)                                                     \
        : "0" ((mp_limb_t)(n0)), "1" ((mp_limb_t)(n1)), "rm" ((mp_limb_t)(dx)))
 
 #define sdiv_qrnnd(q, r, n1, n0, dx)                                            \
-  __asm__ ("idivq %4"                                                           \
+  __asm__ volatile ("idivq %4"                                                           \
        : "=a" (q), "=d" (r)                                                     \
        : "0" ((mp_limb_t)(n0)), "1" ((mp_limb_t)(n1)), "rm" ((mp_limb_t)(dx)))
 
@@ -108,6 +127,18 @@
 /* x86 : 32 bit */
 #if (GMP_LIMB_BITS == 32 && (defined (__i386__) \
    || defined (__i486__) || defined(__amd64__)))
+
+#undef FLINT_KNOW_STRONG_ORDER
+#define FLINT_KNOW_STRONG_ORDER 1
+
+
+#define add_ssssaaaaaaaa(s3, s2, s1, s0, a3, a2, a1, a0, b3, b2, b1, b0)  \
+  __asm__ ("addl %11,%k3\n\tadcl %9,%k2\n\tadcl %7,%k1\n\tadcl %5,%k0"    \
+       : "=r" (s3), "=&r" (s2), "=&r" (s1), "=&r" (s0)                    \
+       : "0"  ((mp_limb_t)(a3)), "g" ((mp_limb_t)(b3)),                   \
+         "1"  ((mp_limb_t)(a2)), "g" ((mp_limb_t)(b2)),                   \
+         "2"  ((mp_limb_t)(a1)), "g" ((mp_limb_t)(b1)),                   \
+         "3"  ((mp_limb_t)(a0)), "g" ((mp_limb_t)(b0)))                   \
 
 #define add_sssaaaaaa(sh, sm, sl, ah, am, al, bh, bm, bl)  \
   __asm__ ("addl %8,%k2\n\tadcl %6,%k1\n\tadcl %4,%k0"     \
@@ -140,13 +171,18 @@
        : "=a" (w0), "=d" (w1)                           \
        : "%0" ((mp_limb_t)(u)), "rm" ((mp_limb_t)(v)))
 
+#define smul_ppmm(w1, w0, u, v)                         \
+  __asm__ ("imull %3"                                   \
+       : "=a" (w0), "=d" (w1)                           \
+       : "%0" ((mp_limb_t)(u)), "rm" ((mp_limb_t)(v)))
+
 #define udiv_qrnnd(q, r, n1, n0, dx)                                            \
-  __asm__ ("divl %4"                                                            \
+  __asm__ volatile ("divl %4"                                                            \
        : "=a" (q), "=d" (r)                                                     \
        : "0" ((mp_limb_t)(n0)), "1" ((mp_limb_t)(n1)), "rm" ((mp_limb_t)(dx)))
 
 #define sdiv_qrnnd(q, r, n1, n0, dx)                                            \
-  __asm__ ("idivl %4"                                                           \
+  __asm__ volatile ("idivl %4"                                                           \
        : "=a" (q), "=d" (r)                                                     \
        : "0" ((mp_limb_t)(n0)), "1" ((mp_limb_t)(n1)), "rm" ((mp_limb_t)(dx)))
 
@@ -340,6 +376,15 @@
     add_ssaaaa(sh, sm, ah + bh, sm, __u, __t);                      \
   } while (0)
 
+#define add_ssssaaaaaaaa(s3, s2, s1, s0, a3, a2, a1, a0, b3, b2, b1, b0)       \
+  do {                                                                         \
+    mp_limb_t __tt;                                                            \
+    add_sssaaaaaa(__tt, s1, s0, (mp_limb_t) 0, a1, a0, (mp_limb_t) 0, b1, b0); \
+    add_ssaaaa(s3, s2, a3, a2, b3, b2);                                        \
+    add_ssaaaa(s3, s2, s3, s2, (mp_limb_t) 0, __tt);                           \
+  } while (0)
+
+
 #if !((GMP_LIMB_BITS == 64 && defined (__ia64)) ||      \
       (GMP_LIMB_BITS == 32 && defined (__arm__)))
 
@@ -358,7 +403,7 @@
     mp_limb_t __t, __u;                                             \
     sub_ddmmss(__t, dl, (mp_limb_t) 0, ml, (mp_limb_t) 0, sl);      \
     sub_ddmmss(__u, dm, (mp_limb_t) 0, mm, (mp_limb_t) 0, sm);      \
-    sub_ddmmss(dh, dm, mh - sh, dm, __u, __t);                      \
+    sub_ddmmss(dh, dm, mh - sh, dm, -__u, -__t);                      \
   } while (0)
 
 /* MIPS and ARM - Use clz builtins */
@@ -550,7 +595,9 @@
 
 #endif /* non x86 fallback code */
 
-#if !(GMP_LIMB_BITS == 32 && defined (__arm__))
+/* smul_ppm is defined previously for 32bit arm and for all x86 */
+#if !( (GMP_LIMB_BITS == 32 && defined (__arm__))                              \
+       || defined (__i386__) || defined (__i486__) || defined(__amd64__))
 
 #define smul_ppmm(w1, w0, u, v)                         \
   do {                                                  \

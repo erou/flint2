@@ -224,7 +224,7 @@ slong _fmpz_mpoly_mul_johnson1(fmpz ** poly1, ulong ** exp1, slong * alloc,
 slong _fmpz_mpoly_mul_johnson(fmpz ** poly1, ulong ** exp1, slong * alloc,
                  const fmpz * poly2, const ulong * exp2, slong len2,
                  const fmpz * poly3, const ulong * exp3, slong len3,
-                                           slong N, ulong maskhi, ulong masklo)
+                              flint_bitcnt_t bits, slong N, const ulong * cmpmask)
 {
    slong i, j, k;
    slong next_loc;
@@ -247,7 +247,7 @@ slong _fmpz_mpoly_mul_johnson(fmpz ** poly1, ulong ** exp1, slong * alloc,
    /* if exponent vectors fit in single word, call special version */
    if (N == 1)
       return _fmpz_mpoly_mul_johnson1(poly1, exp1, alloc,
-                                  poly2, exp2, len2, poly3, exp3, len3, maskhi);
+                             poly2, exp2, len2, poly3, exp3, len3, cmpmask[0]);
 
    TMP_START;
 
@@ -285,7 +285,10 @@ slong _fmpz_mpoly_mul_johnson(fmpz ** poly1, ulong ** exp1, slong * alloc,
    heap[1].next = x;
    heap[1].exp = exp_list[exp_next++];
 
-   mpoly_monomial_add(heap[1].exp, exp2, exp3, N);
+    if (bits <= FLINT_BITS)
+        mpoly_monomial_add(heap[1].exp, exp2, exp3, N);
+    else
+        mpoly_monomial_add_mp(heap[1].exp, exp2, exp3, N);
 
     hind[0] = 2*1 + 0;
 
@@ -314,7 +317,7 @@ slong _fmpz_mpoly_mul_johnson(fmpz ** poly1, ulong ** exp1, slong * alloc,
          /* pop chain from heap and set exponent field to be reused */
          exp_list[--exp_next] = heap[1].exp;
 
-         x = _mpoly_heap_pop(heap, &heap_len, N, maskhi, masklo);
+         x = _mpoly_heap_pop(heap, &heap_len, N, cmpmask);
 
          /* take node out of heap and put into store */
          hind[x->i] |= WORD(1);
@@ -401,10 +404,14 @@ slong _fmpz_mpoly_mul_johnson(fmpz ** poly1, ulong ** exp1, slong * alloc,
             x->next = NULL;
 
             hind[x->i] = 2*(x->j+1) + 0;
-            mpoly_monomial_add(exp_list[exp_next], exp2 + x->i*N,
-                                                   exp3 + x->j*N, N);
+
+            if (bits <= FLINT_BITS)
+                mpoly_monomial_add(exp_list[exp_next], exp2 + x->i*N, exp3 + x->j*N, N);
+            else
+                mpoly_monomial_add_mp(exp_list[exp_next], exp2 + x->i*N, exp3 + x->j*N, N);
+
             if (!_mpoly_heap_insert(heap, exp_list[exp_next++], x,
-                                      &next_loc, &heap_len, N, maskhi, masklo))
+                                      &next_loc, &heap_len, N, cmpmask))
                exp_next--;
          }
 
@@ -423,10 +430,14 @@ slong _fmpz_mpoly_mul_johnson(fmpz ** poly1, ulong ** exp1, slong * alloc,
             x->next = NULL;
 
             hind[x->i] = 2*(x->j+1) + 0;
-            mpoly_monomial_add(exp_list[exp_next], exp2 + x->i*N,
-                                                   exp3 + x->j*N, N);
+
+            if (bits <= FLINT_BITS)
+                mpoly_monomial_add(exp_list[exp_next], exp2 + x->i*N, exp3 + x->j*N, N);
+            else
+                mpoly_monomial_add_mp(exp_list[exp_next], exp2 + x->i*N, exp3 + x->j*N, N);
+
             if (!_mpoly_heap_insert(heap, exp_list[exp_next++], x,
-                                      &next_loc, &heap_len, N, maskhi, masklo))
+                                      &next_loc, &heap_len, N, cmpmask))
                exp_next--;
          }
       }
@@ -449,132 +460,153 @@ slong _fmpz_mpoly_mul_johnson(fmpz ** poly1, ulong ** exp1, slong * alloc,
    return k;
 }
 
-void fmpz_mpoly_mul_johnson(fmpz_mpoly_t poly1, const fmpz_mpoly_t poly2,
-                          const fmpz_mpoly_t poly3, const fmpz_mpoly_ctx_t ctx)
+/* maxBfields gets clobbered */
+void _fmpz_mpoly_mul_johnson_maxfields(
+    fmpz_mpoly_t A,
+    const fmpz_mpoly_t B, fmpz * maxBfields,
+    const fmpz_mpoly_t C, fmpz * maxCfields,
+    const fmpz_mpoly_ctx_t ctx)
 {
-   slong i, bits, exp_bits, N, len = 0;
-   ulong * max_degs2;
-   ulong * max_degs3;
-   ulong maskhi, masklo;
-   ulong max;
-   ulong * exp2 = poly2->exps, * exp3 = poly3->exps;
-   int free2 = 0, free3 = 0;
+    slong N, Alen;
+    flint_bitcnt_t Abits;
+    ulong * cmpmask;
+    ulong * Bexp, * Cexp;
+    int freeBexp, freeCexp;
+    TMP_INIT;
 
-   TMP_INIT;
+    TMP_START;
 
-   /* one of the input polynomials is zero */
-   if (poly2->length == 0 || poly3->length == 0)
-   {
-      fmpz_mpoly_zero(poly1, ctx);
+    _fmpz_vec_add(maxBfields, maxBfields, maxCfields, ctx->minfo->nfields);
 
-      return;
-   }
+    Abits = _fmpz_vec_max_bits(maxBfields, ctx->minfo->nfields);
+    Abits = FLINT_MAX(MPOLY_MIN_BITS, Abits + 1);
+    Abits = FLINT_MAX(Abits, B->bits);
+    Abits = FLINT_MAX(Abits, C->bits);
+    Abits = mpoly_fix_bits(Abits, ctx->minfo);
 
-   TMP_START;
+    N = mpoly_words_per_exp(Abits, ctx->minfo);
+    cmpmask = (ulong *) TMP_ALLOC(N*sizeof(ulong));
+    mpoly_get_cmpmask(cmpmask, N, Abits, ctx->minfo);
 
-   /* compute maximum degree of any variable */
-   max_degs2 = (ulong *) TMP_ALLOC(ctx->n*sizeof(ulong));
-   max_degs3 = (ulong *) TMP_ALLOC(ctx->n*sizeof(ulong));
+    /* ensure input exponents are packed into same sized fields as output */
+    freeBexp = 0;
+    Bexp = B->exps;
+    if (Abits > B->bits)
+    {
+        freeBexp = 1;
+        Bexp = (ulong *) flint_malloc(N*B->length*sizeof(ulong));
+        mpoly_repack_monomials(Bexp, Abits, B->exps, B->bits,
+                                                        B->length, ctx->minfo);
+    }
 
-   fmpz_mpoly_max_degrees(max_degs2, poly2, ctx);
-   fmpz_mpoly_max_degrees(max_degs3, poly3, ctx);
+    freeCexp = 0;
+    Cexp = C->exps;
+    if (Abits > C->bits)
+    {
+        freeCexp = 1;
+        Cexp = (ulong *) flint_malloc(N*C->length*sizeof(ulong));
+        mpoly_repack_monomials(Cexp, Abits, C->exps, C->bits,
+                                                        C->length, ctx->minfo);
+    }
 
-   max = 0;
+    /* deal with aliasing and do multiplication */
+    if (A == B || A == C)
+    {
+        fmpz_mpoly_t T;
+        fmpz_mpoly_init2(T, B->length + C->length - 1, ctx);
+        fmpz_mpoly_fit_bits(T, Abits, ctx);
+        T->bits = Abits;
 
-   for (i = 0; i < ctx->n; i++)
-   {
-      max_degs3[i] += max_degs2[i];
-      /*check exponents won't overflow */
-      if (max_degs3[i] < max_degs2[i] || 0 > (slong) max_degs3[i]) 
-         flint_throw(FLINT_EXPOF, "Exponent overflow in fmpz_mpoly_mul_johnson");
+        /* algorithm more efficient if smaller poly first */
+        if (B->length > C->length)
+        {
+            Alen = _fmpz_mpoly_mul_johnson(&T->coeffs, &T->exps, &T->alloc,
+                                                  C->coeffs, Cexp, C->length,
+                                                  B->coeffs, Bexp, B->length,
+                                                         Abits, N, cmpmask);
+        }
+        else
+        {
+            Alen = _fmpz_mpoly_mul_johnson(&T->coeffs, &T->exps, &T->alloc,
+                                                  B->coeffs, Bexp, B->length,
+                                                  C->coeffs, Cexp, C->length,
+                                                         Abits, N, cmpmask);
+        }
 
-      if (max_degs3[i] > max)
-         max = max_degs3[i];
-   }
+        fmpz_mpoly_swap(T, A, ctx);
+        fmpz_mpoly_clear(T, ctx);
+    }
+    else
+    {
+        fmpz_mpoly_fit_length(A, B->length + C->length - 1, ctx);
+        fmpz_mpoly_fit_bits(A, Abits, ctx);
+        A->bits = Abits;
 
-   /* compute number of bits to store maximum degree */
-   bits = FLINT_BIT_COUNT(max);
-   if (bits >= FLINT_BITS)
-      flint_throw(FLINT_EXPOF, "Exponent overflow in fmpz_mpoly_mul_johnson");
+        /* algorithm more efficient if smaller poly first */
+        if (B->length > C->length)
+        {
+            Alen = _fmpz_mpoly_mul_johnson(&A->coeffs, &A->exps, &A->alloc,
+                                                  C->coeffs, Cexp, C->length,
+                                                  B->coeffs, Bexp, B->length,
+                                                         Abits, N, cmpmask);
+        }
+        else
+        {
+            Alen = _fmpz_mpoly_mul_johnson(&A->coeffs, &A->exps, &A->alloc,
+                                                  B->coeffs, Bexp, B->length,
+                                                  C->coeffs, Cexp, C->length,
+                                                         Abits, N, cmpmask);
+        }
+    }
 
-   exp_bits = 8;
-   while (bits >= exp_bits) /* extra bit required for signs */
-       exp_bits += 1;
+    if (freeBexp)
+        flint_free(Bexp);
 
-   exp_bits = FLINT_MAX(exp_bits, poly2->bits);
-   exp_bits = FLINT_MAX(exp_bits, poly3->bits);
-   exp_bits = mpoly_optimize_bits(exp_bits, ctx->n);
+    if (freeCexp)
+        flint_free(Cexp);
 
-   masks_from_bits_ord(maskhi, masklo, exp_bits, ctx->ord);
-   N = words_per_exp(ctx->n, exp_bits);
+    _fmpz_mpoly_set_length(A, Alen, ctx);
 
-   /* ensure input exponents are packed into same sized fields as output */
-   if (exp_bits > poly2->bits)
-   {
-      free2 = 1;
-      exp2 = (ulong *) flint_malloc(N*poly2->length*sizeof(ulong));
-      mpoly_unpack_monomials(exp2, exp_bits, poly2->exps, poly2->bits,
-                                                        poly2->length, ctx->n);
-   }
+    TMP_END;
+}
 
-   if (exp_bits > poly3->bits)
-   {
-      free3 = 1;
-      exp3 = (ulong *) flint_malloc(N*poly3->length*sizeof(ulong));
-      mpoly_unpack_monomials(exp3, exp_bits, poly3->exps, poly3->bits,
-                                                        poly3->length, ctx->n);
-   }
 
-   /* deal with aliasing and do multiplication */
-   if (poly1 == poly2 || poly1 == poly3)
-   {
-      fmpz_mpoly_t temp;
 
-      fmpz_mpoly_init2(temp, poly2->length + poly3->length - 1, ctx);
-      fmpz_mpoly_fit_bits(temp, exp_bits, ctx);
-      temp->bits = exp_bits;
+void fmpz_mpoly_mul_johnson(
+    fmpz_mpoly_t A,
+    const fmpz_mpoly_t B,
+    const fmpz_mpoly_t C,
+    const fmpz_mpoly_ctx_t ctx)
+{
+    slong i;
+    fmpz * maxBfields, * maxCfields;
+    TMP_INIT;
 
-      /* algorithm more efficient if smaller poly first */
-      if (poly2->length >= poly3->length)
-         len = _fmpz_mpoly_mul_johnson(&temp->coeffs, &temp->exps, &temp->alloc,
-                                      poly3->coeffs, exp3, poly3->length,
-                                      poly2->coeffs, exp2, poly2->length,
-                                                            N, maskhi, masklo);
-      else
-         len = _fmpz_mpoly_mul_johnson(&temp->coeffs, &temp->exps, &temp->alloc,
-                                      poly2->coeffs, exp2, poly2->length,
-                                      poly3->coeffs, exp3, poly3->length,
-                                                            N, maskhi, masklo);
+    if (B->length == 0 || C->length == 0)
+    {
+        fmpz_mpoly_zero(A, ctx);
+        return;
+    }
 
-      fmpz_mpoly_swap(temp, poly1, ctx);
+    TMP_START;
 
-      fmpz_mpoly_clear(temp, ctx);
-   } else
-   {
-      fmpz_mpoly_fit_length(poly1, poly2->length + poly3->length - 1, ctx);
-      fmpz_mpoly_fit_bits(poly1, exp_bits, ctx);
-      poly1->bits = exp_bits;
+    maxBfields = (fmpz *) TMP_ALLOC(ctx->minfo->nfields*sizeof(fmpz));
+    maxCfields = (fmpz *) TMP_ALLOC(ctx->minfo->nfields*sizeof(fmpz));
+    for (i = 0; i < ctx->minfo->nfields; i++)
+    {
+        fmpz_init(maxBfields + i);
+        fmpz_init(maxCfields + i);
+    }
+    mpoly_max_fields_fmpz(maxBfields, B->exps, B->length, B->bits, ctx->minfo);
+    mpoly_max_fields_fmpz(maxCfields, C->exps, C->length, C->bits, ctx->minfo);
 
-      /* algorithm more efficient if smaller poly first */
-      if (poly2->length > poly3->length)
-         len = _fmpz_mpoly_mul_johnson(&poly1->coeffs, &poly1->exps, &poly1->alloc,
-                                      poly3->coeffs, exp3, poly3->length,
-                                      poly2->coeffs, exp2, poly2->length,
-                                                            N, maskhi, masklo);
-      else
-         len = _fmpz_mpoly_mul_johnson(&poly1->coeffs, &poly1->exps, &poly1->alloc,
-                                      poly2->coeffs, exp2, poly2->length,
-                                      poly3->coeffs, exp3, poly3->length,
-                                                            N, maskhi, masklo);
-   }
+    _fmpz_mpoly_mul_johnson_maxfields(A, B, maxBfields, C, maxCfields, ctx);
 
-   if (free2)
-      flint_free(exp2);
+    for (i = 0; i < ctx->minfo->nfields; i++)
+    {
+        fmpz_clear(maxBfields + i);
+        fmpz_clear(maxCfields + i);
+    }
 
-   if (free3)
-      flint_free(exp3);
-
-   _fmpz_mpoly_set_length(poly1, len, ctx);
-
-   TMP_END;
+    TMP_END;
 }

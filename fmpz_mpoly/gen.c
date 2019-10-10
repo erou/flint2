@@ -1,5 +1,6 @@
 /*
     Copyright (C) 2016 William Hart
+    Copyright (C) 2018 Daniel Schultz
 
     This file is part of FLINT.
 
@@ -9,79 +10,24 @@
     (at your option) any later version.  See <http://www.gnu.org/licenses/>.
 */
 
-#include <gmp.h>
-#include <stdlib.h>
-#include "flint.h"
-#include "fmpz.h"
 #include "fmpz_mpoly.h"
-/*
-void _fmpz_mpoly_gen1(fmpz * poly, ulong * exps, slong i,
-                                         slong bits, slong n, int deg, int rev)
-{
-    slong k = FLINT_BITS/bits;
 
-    fmpz_set_ui(poly + 0, 1);
-    if (!rev)
-       exps[0] = (UWORD(1) << ((k - i - deg - 1)*bits));
+void fmpz_mpoly_gen(fmpz_mpoly_t A, slong var, const fmpz_mpoly_ctx_t ctx)
+{
+    flint_bitcnt_t bits;
+
+    bits = mpoly_gen_bits_required(var, ctx->minfo);
+    bits = mpoly_fix_bits(bits, ctx->minfo);
+
+    fmpz_mpoly_fit_length(A, WORD(1), ctx);
+    fmpz_mpoly_fit_bits(A, bits, ctx);
+    A->bits = bits;
+
+    fmpz_one(A->coeffs);
+    if (bits <= FLINT_BITS)
+        mpoly_gen_monomial_sp(A->exps, var, bits, ctx->minfo);
     else
-       exps[0] = (UWORD(1) << ((k - n + i)*bits));
-    
-    if (deg)
-       exps[0] |= (UWORD(1) << ((k - 1)*bits));
-}
+        mpoly_gen_monomial_offset_mp(A->exps, var, bits, ctx->minfo);
 
-void _fmpz_mpoly_gen(fmpz * poly, ulong * exps, slong i,
-                                slong bits, slong n, int deg, int rev, slong N)
-{
-    slong j;
-    ulong * mon;
-
-    TMP_INIT;
-
-    if (N == 1)
-    {
-       _fmpz_mpoly_gen1(poly, exps, i, bits, n, deg, rev);
-
-       return;
-    }
-    
-    fmpz_set_ui(poly + 0, 1);
-    
-    TMP_START;
-
-    mon = (ulong *) TMP_ALLOC((n - deg)*sizeof(ulong));
-    
-    for (j = 0; j < n - deg; j++)
-       mon[j] = 0;
-
-    mon[i] = 1;
-
-    mpoly_set_monomial(exps, mon, bits, n, deg, rev);
-
-    TMP_END;
-}
-*/
-void fmpz_mpoly_gen(fmpz_mpoly_t poly, slong i, const fmpz_mpoly_ctx_t ctx)
-{
-    int deg, rev;
-    slong j;
-    ulong * mon;
-    TMP_INIT;
-
-    degrev_from_ord(deg, rev, ctx->ord);
-
-    fmpz_mpoly_fit_length(poly, 1, ctx);
-
-    fmpz_set_ui(poly->coeffs + 0, 1);
-
-    TMP_START;
-
-    mon = (ulong *) TMP_ALLOC((ctx->n - deg)*sizeof(ulong));
-    for (j = 0; j < ctx->n - deg; j++)
-       mon[j] = (j == i);
-    mpoly_set_monomial(poly->exps, mon, poly->bits, ctx->n, deg, rev);
-
-    TMP_END;
-
-    _fmpz_mpoly_set_length(poly, 1, ctx);
+    _fmpz_mpoly_set_length(A, WORD(1), ctx);
 }

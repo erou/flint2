@@ -61,6 +61,8 @@ FLINT_DLL int _fq_zech_ctx_init_conway(fq_zech_ctx_t ctx, const fmpz_t p, slong 
 
 FLINT_DLL void fq_zech_ctx_init_conway(fq_zech_ctx_t ctx, const fmpz_t p, slong d, const char *var);
 
+FLINT_DLL void fq_zech_ctx_init_random(fq_zech_ctx_t ctx, const fmpz_t p, slong d, const char *var);
+
 FLINT_DLL void fq_zech_ctx_init_modulus(fq_zech_ctx_t ctx,
                               const nmod_poly_t modulus,
                               const char *var);
@@ -310,10 +312,10 @@ FLINT_DLL void fq_zech_norm(fmpz_t rop, const fq_zech_t op, const fq_zech_ctx_t 
 
 /* Bit packing ******************************************************/
 
-FLINT_DLL void fq_zech_bit_pack(fmpz_t f, const fq_zech_t op, mp_bitcnt_t bit_size,
+FLINT_DLL void fq_zech_bit_pack(fmpz_t f, const fq_zech_t op, flint_bitcnt_t bit_size,
                  const fq_zech_ctx_t ctx);
 
-FLINT_DLL void fq_zech_bit_unpack(fq_zech_t rop, const fmpz_t f, mp_bitcnt_t bit_size,
+FLINT_DLL void fq_zech_bit_unpack(fq_zech_t rop, const fmpz_t f, flint_bitcnt_t bit_size,
                    const fq_zech_ctx_t ctx);
 
 #ifdef T

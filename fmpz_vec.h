@@ -55,16 +55,19 @@ FLINT_DLL void _fmpz_vec_clear(fmpz * vec, slong len);
 /*  Randomisation  ***********************************************************/
 
 FLINT_DLL void _fmpz_vec_randtest(fmpz * f, flint_rand_t state, 
-                        slong len, mp_bitcnt_t bits);
+                        slong len, flint_bitcnt_t bits);
 
 FLINT_DLL void _fmpz_vec_randtest_unsigned(fmpz * f, flint_rand_t state, 
-                                 slong len, mp_bitcnt_t bits);
+                                 slong len, flint_bitcnt_t bits);
 
 /*  Norms  *******************************************************************/
 
 FLINT_DLL slong _fmpz_vec_max_bits(const fmpz * vec, slong len);
 
 FLINT_DLL slong _fmpz_vec_max_bits_ref(const fmpz * vec, slong len);
+
+FLINT_DLL void _fmpz_vec_sum_max_bits(slong * sumabs, slong * maxabs,
+                                            const fmpz * coeffs, slong length);
 
 FLINT_DLL mp_size_t _fmpz_vec_max_limbs(const fmpz * vec, slong len);
 
@@ -126,6 +129,14 @@ FLINT_DLL void _fmpz_vec_scalar_abs(fmpz * vec1,
 FLINT_DLL int _fmpz_vec_equal(const fmpz * vec1, const fmpz * vec2, slong len);
 
 FLINT_DLL int _fmpz_vec_is_zero(const fmpz * vec, slong len);
+
+FLINT_DLL void _fmpz_vec_max(fmpz * vec1, const fmpz * vec2, const fmpz * vec3,
+                                                                     slong len);
+FLINT_DLL void _fmpz_vec_max_inplace(fmpz * vec1, const fmpz * vec2, slong len);
+
+FLINT_DLL void _fmpz_vec_min(fmpz * vec1, const fmpz * vec2, const fmpz * vec3,
+                                                                     slong len);
+FLINT_DLL void _fmpz_vec_min_inplace(fmpz * vec1, const fmpz * vec2, slong len);
 
 /* Sorting  ******************************************************************/
 

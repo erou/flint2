@@ -10,7 +10,9 @@
 */
 
 #include <sys/types.h>
+#if (!defined (__WIN32) || defined(__CYGWIN__)) && !defined(_MSC_VER) 
 #include <unistd.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <gmp.h>
@@ -96,6 +98,9 @@ int main(void)
             }
 
             fclose(out);
+            for (i = 0; i < k; ++i)
+                fmpz_mat_clear(M[i]);
+            flint_free(M);
             exit(0);
         }
         else  /* Parent process */

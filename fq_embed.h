@@ -31,8 +31,9 @@
 #undef T
 
 FQ_EMBED_INLINE void fq_modulus_derivative_inv(fq_t m_prime,
-					       fq_t m_prime_inv,
-					       const fq_ctx_t ctx) {
+                                               fq_t m_prime_inv,
+                                               const fq_ctx_t ctx)
+{
     fmpz_mod_poly_t tmp;
     fmpz_mod_poly_init(tmp, fq_ctx_prime(ctx));
     

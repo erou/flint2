@@ -1,5 +1,6 @@
 /*
     Copyright (C) 2016 William Hart
+    Copyright (C) 2019 Daniel Schultz
 
     This file is part of FLINT.
 
@@ -9,6 +10,7 @@
     (at your option) any later version.  See <http://www.gnu.org/licenses/>.
 */
 
+#include <string.h>
 #include <gmp.h>
 #include <stdlib.h>
 #include "flint.h"
@@ -22,7 +24,7 @@ void _fmpz_mpoly_realloc(fmpz ** poly, ulong ** exps,
     (*exps) = (ulong *) flint_realloc(*exps, len*N*sizeof(ulong));
 
     if (len > *alloc)
-        flint_mpn_zero((mp_ptr) (*poly + *alloc), len - *alloc);
+        memset(*poly + *alloc, 0, (len - *alloc)*sizeof(fmpz));
     
     (*alloc) = len;
 }
@@ -40,7 +42,7 @@ void fmpz_mpoly_realloc(fmpz_mpoly_t poly,
         return;
     }
 
-    N = words_per_exp(ctx->n, poly->bits);
+    N = mpoly_words_per_exp(poly->bits, ctx->minfo);
 
     if (poly->alloc != 0)            /* Realloc */
     {
@@ -50,10 +52,8 @@ void fmpz_mpoly_realloc(fmpz_mpoly_t poly,
         poly->exps = (ulong *) flint_realloc(poly->exps, alloc*N*sizeof(ulong));
 
         if (alloc > poly->alloc)
-        {
-           flint_mpn_zero((mp_ptr) (poly->coeffs + poly->alloc),
-                     alloc - poly->alloc);
-        }
+            memset(poly->coeffs + poly->alloc, 0,
+                                           (alloc - poly->alloc)*sizeof(fmpz));
     }
     else                        /* Nothing allocated already so do it now */
     {
